@@ -8,12 +8,20 @@ const masterBase =
 
 export default {
   expo: {
-    name: 'GGFIX Customer',
-    slug: 'ggfix-work-app',
+    name: 'NearGFix Customer',
+    slug: 'neargfix-customer',
     // EAS account/organization that owns the project (from your Expo dashboard).
     // Verify this matches expo.dev → your account. Change if different.
     owner: 'globogreen-system-and-technology-private-limited',
     version: '1.0.0',
+    // OTA (EAS Update): updates download in the background on launch and apply on
+    // the next cold start (fallbackToCacheTimeout 0) - no mid-session reloads.
+    runtimeVersion: { policy: 'appVersion' },
+    updates: {
+      url: 'https://u.expo.dev/' + (process.env.EAS_PROJECT_ID || '4d7d99e9-588c-4345-910f-0c8be1f41f1b'),
+      checkAutomatically: 'ON_LOAD',
+      fallbackToCacheTimeout: 0,
+    },
     platforms: ['ios', 'android', 'web'],
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
@@ -24,7 +32,7 @@ export default {
     splash: { image: './assets/logo.png', resizeMode: 'contain', backgroundColor: '#004C40' },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.ggfix.customerapp',
+      bundleIdentifier: 'com.neargfix.customer',
       infoPlist: {
         NSLocationWhenInUseUsageDescription:
           'We use your location to show pickup-enabled repair shops nearby and to set your default delivery address.',
@@ -34,15 +42,17 @@ export default {
       },
     },
     android: {
-      package: 'com.ggfix.customerapp',
+      package: 'com.neargfix.customer',
+      // Google Maps (Android) key from env / EAS secret — never committed.
+      config: { googleMaps: { apiKey: process.env.GOOGLE_MAPS_ANDROID_API_KEY } },
       adaptiveIcon: { foregroundImage: './assets/logo.png', backgroundColor: '#202124' },
       permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION'],
     },
     plugins: [
-      ['expo-local-authentication', { faceIDPermission: 'Use Face ID to unlock GGFIX.' }],
+      ['expo-local-authentication', { faceIDPermission: 'Use Face ID to unlock NearGFix.' }],
       ['expo-audio', { microphonePermission: 'We use your microphone to record voice notes for your repair complaint and chat.' }],
-      ['expo-camera', { cameraPermission: 'GGFIX uses your camera to identify a device from a photo and to scan QR codes and barcodes.', recordAudioAndroid: false }],
-      ['expo-image-picker', { photosPermission: 'GGFIX uses your photos only to identify a device from a picture you choose.', cameraPermission: 'GGFIX uses your camera to identify a device from a photo and to scan QR codes and barcodes.', microphonePermission: false }],
+      ['expo-camera', { cameraPermission: 'NearGFix uses your camera to identify a device from a photo and to scan QR codes and barcodes.', recordAudioAndroid: false }],
+      ['expo-image-picker', { photosPermission: 'NearGFix uses your photos only to identify a device from a picture you choose.', cameraPermission: 'NearGFix uses your camera to identify a device from a photo and to scan QR codes and barcodes.', microphonePermission: false }],
       // Cleartext HTTP for the plain-http backend. The bare android.usesCleartextTraffic
       // key is ignored by Expo prebuild — it must be set via expo-build-properties.
       [
@@ -87,7 +97,7 @@ export default {
       eas: {
         projectId:
           process.env.EAS_PROJECT_ID ||
-          '13a4dfbf-53e8-48b7-97bc-0b85530b9cc2',
+          '4d7d99e9-588c-4345-910f-0c8be1f41f1b',
       },
     },
   },

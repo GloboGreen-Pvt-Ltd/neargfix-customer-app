@@ -51,32 +51,41 @@ export default function AppLockGate({ children, onLogout }) {
   }, [enabled, runUnlock]);
 
   if (enabled === null) return null;         // brief boot check
-  if (!enabled || !locked) return children;  // unlocked → show the app
-
   return (
-    <View style={{ flex: 1, backgroundColor: '#004C40', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <Image
-        source={require('../../assets/logo.png')}
-        style={{ width: 88, height: 88, borderRadius: 20, marginBottom: 18 }}
-        resizeMode="contain"
-      />
-      <View style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-        <Lock size={20} color="#FFFFFF" />
-      </View>
-      <Text style={{ color: '#FFFFFF', fontSize: rf(18), fontWeight: '800' }}>App Locked</Text>
-      <Text style={{ color: '#D1FAE5', fontSize: rf(13), marginTop: 6, textAlign: 'center', lineHeight: rlh(18) }}>
-        Unlock with your fingerprint, pattern or PIN to continue.
-      </Text>
-      <Pressable
-        onPress={runUnlock}
-        disabled={checking}
-        style={{ marginTop: 22, backgroundColor: '#004C40', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 14, opacity: checking ? 0.6 : 1, minWidth: 150, alignItems: 'center' }}
-      >
-        {checking ? <ActivityIndicator color="#FFFFFF" /> : <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: rf(15) }}>Unlock</Text>}
-      </Pressable>
-      <Pressable onPress={onLogout} style={{ marginTop: 16 }}>
-        <Text style={{ color: '#A7F3D0', fontSize: rf(13), fontWeight: '700' }}>Log out instead</Text>
-      </Pressable>
+    <View style={{ flex: 1 }}>
+      {children}
+      {enabled && locked ? (
+        <View
+          style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center',
+            padding: 24, zIndex: 9999, elevation: 9999,
+          }}
+        >
+          <Image
+            source={require('../../assets/logo.png')}
+            style={{ width: 88, height: 88, borderRadius: 20, marginBottom: 18 }}
+            resizeMode="contain"
+          />
+          <View style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: '#E5F3F5', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+            <Lock size={20} color="#035C6C" />
+          </View>
+          <Text style={{ color: '#111111', fontSize: 17, fontWeight: '800' }}>App Locked</Text>
+          <Text style={{ color: '#6B7280', fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 18 }}>
+            Unlock with your fingerprint, pattern or PIN to continue.
+          </Text>
+          <Pressable
+            onPress={runUnlock}
+            disabled={checking}
+            style={{ marginTop: 22, backgroundColor: '#035C6C', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 14, opacity: checking ? 0.6 : 1, minWidth: 150, alignItems: 'center' }}
+          >
+            {checking ? <ActivityIndicator color="#FFFFFF" /> : <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>Unlock</Text>}
+          </Pressable>
+          <Pressable onPress={onLogout} style={{ marginTop: 16 }}>
+            <Text style={{ color: '#F84141', fontSize: 13, fontWeight: '700' }}>Log out instead</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Image, ScrollView, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Image, Pressable, ScrollView, Text, View } from 'react-native';
 import {
   CalendarClock,
   Smartphone,
@@ -16,7 +16,10 @@ import {
   PackageCheck,
 } from 'lucide-react-native';
 import { rf } from '../../../utils/responsive';
+import { issueLabel } from './RepairIssueGroups';
 import { BRAND } from '../../../theme/brand';
+import { getModel } from '../../../api/masterData';
+import { normalizeDeviceImageUrl, resolveDeviceImageSource } from '../../../utils/images';
 import { SuccessHero, SuccessCard, StatusPill, InfoRow, SuccessActions, GREEN_TEXT, MINT, MUTED } from '../../../components/SuccessChrome';
 
 const hashed = (n) => (n ? (String(n).startsWith('#') ? String(n) : `#${n}`) : '');
@@ -38,13 +41,13 @@ function ProgressStrip() {
         return (
           <React.Fragment key={s.label}>
             <View style={{ alignItems: 'center', width: 58 }}>
-              <View style={{ height: 26, width: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: done ? BRAND.green : MINT, borderWidth: done ? 3 : 0, borderColor: 'rgba(9,173,42,0.22)' }}>
+              <View style={{ height: 26, width: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: done ? BRAND.green : MINT, borderWidth: done ? 3 : 0, borderColor: 'rgba(3,92,108,0.22)' }}>
                 <Icon size={12} color={done ? '#FFFFFF' : GREEN_TEXT} strokeWidth={done ? 3 : 2.2} />
               </View>
               <Text style={{ fontSize: rf(9.5), fontWeight: '700', color: done ? GREEN_TEXT : MUTED, marginTop: 3 }} numberOfLines={1}>{s.label}</Text>
             </View>
             {i < PROGRESS.length - 1 ? (
-              <View style={{ flex: 1, height: 2, borderRadius: 1, marginTop: 12, marginHorizontal: -8, backgroundColor: i === 0 ? 'rgba(9,173,42,0.45)' : '#E3E3E3' }} />
+              <View style={{ flex: 1, height: 2, borderRadius: 1, marginTop: 12, marginHorizontal: -8, backgroundColor: i === 0 ? 'rgba(3,92,108,0.45)' : '#E8EAEE' }} />
             ) : null}
           </React.Fragment>
         );
@@ -56,9 +59,23 @@ function ProgressStrip() {
 export default function RepairConfirmationScreen({ navigation, route }) {
   const { booking = {}, device = {}, shop, address, services = [] } = route.params || {};
 
-  const deviceName = device.modelName || booking.modelName || device.brandName || booking.brandName || '-';
-  const ramStorage = [device.ramLabel, device.storageLabel].filter(Boolean).join(' / ');
-  const deviceSpecs = [device.brandName, device.color, ramStorage].filter(Boolean).join(' · ');
+  // Master-data model for whatever the passed device lacks (name / brand / image).
+  const modelId = device.modelId || booking.modelId;
+  const [model, setModel] = useState(null);
+  useEffect(() => {
+    if (!modelId || (device.modelName && device.imageUrl)) return undefined;
+    let alive = true;
+    getModel(modelId).then((m) => { if (alive) setModel(m || null); }).catch(() => {});
+    return () => { alive = false; };
+  }, [modelId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const modelName = device.modelName || booking.modelName || model?.name || '';
+  const brandName = device.brandName || booking.brandName || model?.brandName || model?.brand?.name || '';
+  const deviceName = modelName ? (brandName && !modelName.toLowerCase().startsWith(brandName.toLowerCase()) ? `${brandName} ${modelName}` : modelName) : (brandName || 'Your device');
+  const ramStorage = [device.ramLabel || booking.ramLabel, device.storageLabel || booking.storageLabel].filter(Boolean).join(' / ');
+  const deviceSpecs = [ramStorage, device.color || booking.color].filter(Boolean).join(' · ');
+  // Model photo (URL or base64), else the customer's own front photo.
+  const deviceImage = resolveDeviceImageSource({ url: device.imageUrl || model?.imageUrl, base64: model?.imageBase64 })
+    || normalizeDeviceImageUrl(booking.frontImageUrl) || device.media?.front?.uri || null;
   const addressText = address
     ? [address.addressLine, address.locality, address.city, address.state, address.pincode].filter(Boolean).join(', ')
     : '-';
@@ -87,9 +104,9 @@ export default function RepairConfirmationScreen({ navigation, route }) {
 
             {/* device block */}
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: BRAND.line }}>
-              <View style={{ height: 46, width: 42, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: BRAND.line, alignItems: 'center', justifyContent: 'center', marginRight: 9, overflow: 'hidden' }}>
-                {device.imageUrl ? (
-                  <Image source={{ uri: device.imageUrl }} style={{ width: 38, height: 42 }} resizeMode="contain" />
+              <View style={{ height: 64, width: 56, borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: BRAND.line, alignItems: 'center', justifyContent: 'center', marginRight: 10, overflow: 'hidden' }}>
+                {deviceImage ? (
+                  <Image source={{ uri: deviceImage }} style={{ width: 50, height: 58 }} resizeMode="contain" />
                 ) : (
                   <Smartphone size={20} color={GREEN_TEXT} />
                 )}
@@ -101,7 +118,7 @@ export default function RepairConfirmationScreen({ navigation, route }) {
               </View>
             </View>
 
-            <InfoRow icon={Wrench} label="Repair Services" value={services.map((s) => s.name).join(', ')} />
+            <InfoRow icon={Wrench} label="Repair Services" value={services.map(issueLabel).join(', ')} />
             <InfoRow
               icon={MapPin}
               label="Pickup Address"
@@ -120,12 +137,23 @@ export default function RepairConfirmationScreen({ navigation, route }) {
           <Text style={{ fontSize: rf(11), color: MUTED, textAlign: 'center', paddingHorizontal: 12, lineHeight: rf(16) }}>
             We'll send you live updates as your repair progresses through pickup, diagnosis, repair and delivery.
           </Text>
+          <Pressable
+            onPress={() => navigation.popToTop()}
+            accessibilityRole="button"
+            hitSlop={8}
+            className="active:opacity-70"
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', minHeight: 44, marginTop: 6, paddingHorizontal: 16 }}
+          >
+            <Home size={15} color={GREEN_TEXT} />
+            <Text style={{ marginLeft: 6, fontSize: rf(13), fontWeight: '800', color: GREEN_TEXT }}>Back to Home</Text>
+          </Pressable>
         </View>
       </ScrollView>
 
-      {/* Sticky actions — same handlers as before. */}
+      {/* View Details → booking details · Track Order → pickup tracking, each
+          for this new booking; both replace this screen (Back → Home). */}
       <SuccessActions
-        secondary={{ label: 'Home', icon: Home, onPress: () => navigation.popToTop() }}
+        secondary={{ label: 'View Details', icon: ClipboardCheck, onPress: () => navigation.replace('RepairPickupStatus', { bookingId: booking.id }) }}
         primary={{ label: 'Track Order', icon: Truck, trailing: ChevronRight, onPress: () => navigation.replace('RepairOrderDetails', { bookingId: booking.id }) }}
       />
     </View>
