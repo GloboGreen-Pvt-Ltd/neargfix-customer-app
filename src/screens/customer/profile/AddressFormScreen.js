@@ -21,6 +21,7 @@ import { forceRelogin } from '../../../auth/session';
 import { rf } from '../../../utils/responsive';
 import PageHeader from '../../../components/PageHeader';
 import { BRAND } from '../../../theme/brand';
+import AddressPlaceSearch from '../../../components/AddressPlaceSearch';
 
 // Palette: 035C6C · 111111 · F3F4F6 · F3F4F6 · FAA700 · F32C26.
 const GREEN_TEXT = '#035C6C'; // #035C6C shaded for text on white
@@ -364,6 +365,23 @@ export default function AddressFormScreen({ navigation, route }) {
           title="Address"
           subtitle="House, street, area & PIN code"
         >
+          {/* Google search + map pin; every field below stays editable. */}
+          <AddressPlaceSearch
+            latitude={data.latitude}
+            longitude={data.longitude}
+            onPin={({ latitude, longitude }) => fillFromCoords(latitude, longitude)}
+            onPlace={(p) => setData((d) => ({
+              ...d,
+              latitude: p.latitude ?? d.latitude,
+              longitude: p.longitude ?? d.longitude,
+              addressLine: p.address ? p.address.split(', ').slice(0, 2).join(', ') : d.addressLine,
+              area: p.area || d.area,
+              taluk: p.city || d.taluk,
+              district: p.district || d.district,
+              state: p.state || d.state,
+              pincode: p.pincode || d.pincode,
+            }))}
+          />
           <Pressable
             onPress={useMyLocation}
             disabled={locating}

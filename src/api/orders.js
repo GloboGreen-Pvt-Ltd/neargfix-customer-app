@@ -130,6 +130,9 @@ export async function negotiateSellRevision(id, { amount, note }) {
 export async function updateSellOrder(id, payload) {
   return await orderApi.put(`/sell-orders/${id}`, { body: payload });
 }
+export async function scheduleSellOrder(id, { pickupDate, slotStart, slotEnd }) {
+  return await orderApi.post(`/sell-orders/${id}/schedule`, { body: { pickupDate, slotStart, slotEnd } });
+}
 export async function cancelSellOrder(id) {
   return await orderApi.post(`/sell-orders/${id}/cancel`);
 }
