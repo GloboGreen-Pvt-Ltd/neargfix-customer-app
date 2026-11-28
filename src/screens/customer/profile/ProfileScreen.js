@@ -15,7 +15,6 @@ import { clearSession as clearAuth, selectSession } from '../../../store/authSli
 import { clearSession } from '../../../auth/session';
 import { isAppLockEnabled, setAppLockEnabled, isDeviceSecure, authenticate } from '../../../auth/appLock';
 import { rf, rs } from '../../../utils/responsive';
-import SecuritySettings from '../../../security/SecuritySettings';
 import { useSecurity } from '../../../security/SecurityGate';
 
 // Same palette and tile tones as the Partner app's My Account screen.
@@ -39,18 +38,18 @@ const ion = (name) => function IonGlyph({ size = 20, color }) { return <Ionicons
 const mci = (name) => function MciGlyph({ size = 20, color }) { return <MaterialCommunityIcons name={name} size={size} color={color} />; };
 
 const ACCOUNT = [
-  { label: 'My Orders',        desc: 'Track & manage your orders',  icon: ion('bag-handle'),     to: 'MyOrders',      tone: 'green' },
-  { label: 'My Cart',          desc: 'Items saved for checkout',    icon: ion('cart'),           to: 'MyCart',        tone: 'orange' },
-  { label: 'Manage My Device', desc: 'Your saved devices',          icon: ion('phone-portrait'), to: 'ManageDevice',  tone: 'purple' },
-  { label: 'Manage Addresses', desc: 'Delivery & pickup addresses', icon: ion('location'),       to: 'ManageAddress', tone: 'blue' },
+  { label: 'My Orders',        desc: 'Track & manage your orders',  icon: ion('bag-handle-outline'),     to: 'MyOrders',      tone: 'green' },
+  { label: 'My Cart',          desc: 'Items saved for checkout',    icon: ion('cart-outline'),           to: 'MyCart',        tone: 'orange' },
+  { label: 'Manage My Device', desc: 'Your saved devices',          icon: ion('phone-portrait-outline'), to: 'ManageDevice',  tone: 'purple' },
+  { label: 'Manage Addresses', desc: 'Delivery & pickup addresses', icon: ion('location-outline'),       to: 'ManageAddress', tone: 'blue' },
 ];
 
 const SUPPORT = [
-  { label: 'Customer Support',   desc: "We're here to help",          icon: ion('headset'),            to: 'CustomerSupport', tone: 'orange' },
-  { label: 'FAQ',                desc: 'Answers to common questions', icon: ion('help-circle'),        to: 'Faq',             tone: 'purple' },
-  { label: 'About Us',           desc: 'Learn about NearGFix',           icon: ion('information-circle'), to: 'AboutUs',         tone: 'green' },
-  { label: 'Terms & Conditions', desc: 'Policies & agreements',       icon: mci('script-text'),        to: 'Terms',           tone: 'blue' },
-  { label: 'Privacy Policy',     desc: 'How we handle your data',     icon: mci('shield-check'),       to: 'PrivacyPolicy',   tone: 'green' },
+  { label: 'Customer Support',   desc: "We're here to help",          icon: ion('headset-outline'),            to: 'CustomerSupport', tone: 'orange' },
+  { label: 'FAQ',                desc: 'Answers to common questions', icon: ion('help-circle-outline'),        to: 'Faq',             tone: 'purple' },
+  { label: 'About Us',           desc: 'Learn about NearGFix',           icon: ion('information-circle-outline'), to: 'AboutUs',         tone: 'green' },
+  { label: 'Terms & Conditions', desc: 'Policies & agreements',       icon: mci('script-text-outline'),        to: 'Terms',           tone: 'blue' },
+  { label: 'Privacy Policy',     desc: 'How we handle your data',     icon: mci('shield-check-outline'),       to: 'PrivacyPolicy',   tone: 'green' },
 ];
 
 // App version comes from the Expo app config (app.config.js `version`), with
@@ -104,8 +103,8 @@ function Row({ item, onPress, last }) {
       className="active:opacity-80"
       style={{ ...LIST_ROW, borderBottomWidth: last ? 0 : 1, borderBottomColor: '#F1F3F5' }}
     >
-      <View style={{ ...ICON_TILE, backgroundColor: TONE[item.tone] || TONE.green }}>
-        <Icon size={rf(19)} color="#FFFFFF" />
+      <View style={{ ...ICON_TILE, backgroundColor: '#E6F2F4' }}>
+        <Icon size={rf(19)} color="#035C6C" />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={{ fontSize: rf(13.5), fontWeight: '700', color: DARK }}>{item.label}</Text>
@@ -119,13 +118,13 @@ function Row({ item, onPress, last }) {
 // App Lock toggle row — matches the menu-row shape. Requires the device
 // fingerprint / pattern / PIN to open the app. Fails OPEN when the device has
 // no lock (we tell the user to set one first).
-// Device-bound sessions show MPIN / biometric settings; legacy servers keep App Lock.
+// No MPIN / TPIN in the Customer app (SecurityGate): App Lock is the only setting.
 function SecurityBlock() {
-  const { secure } = useSecurity();
-  return secure ? <SecuritySettings /> : <View style={LIST_STYLE}><AppLockRow /></View>;
+  return <View style={LIST_STYLE}><AppLockRow /></View>;
 }
 
 function AppLockRow() {
+  const { setBioOn } = useSecurity();
   const [on, setOn] = useState(false);
   const [ready, setReady] = useState(false);
   useEffect(() => { (async () => { setOn(await isAppLockEnabled()); setReady(true); })(); }, []);
@@ -139,11 +138,12 @@ function AppLockRow() {
     }
     await setAppLockEnabled(next);
     setOn(next);
+    setBioOn?.(next); // the gate locks / stops locking right away, not on the next start
   };
   return (
     <View style={LIST_ROW}>
-      <View style={{ ...ICON_TILE, backgroundColor: TONE.blue }}>
-        <Ionicons name="lock-closed" size={rf(18)} color="#FFFFFF" />
+      <View style={{ ...ICON_TILE, backgroundColor: '#E6F2F4' }}>
+        <Ionicons name="lock-closed-outline" size={rf(18)} color="#035C6C" />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={{ fontSize: rf(13.5), fontWeight: '700', color: DARK }}>App Lock</Text>

@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Linking, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, AppState, Easing, Image, Linking, PanResponder, Platform, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, scanFromURLAsync } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   ArrowLeft, Zap, ZapOff, ImageUp, Keyboard as KeyboardIcon, QrCode, ScanBarcode, Camera,
   Smartphone, Store, Phone, ExternalLink, SearchX, RotateCcw, Wrench, Tag, ShoppingBag, Search,
@@ -44,6 +46,69 @@ function modelForCode(catalog, code) {
   return best;
 }
 
+function Corners({ color }) {
+  return (
+    <>
+      {[[0, 0], [0, 1], [1, 0], [1, 1]].map(([v, h]) => (
+        <View key={`${v}${h}`} style={{
+          position: 'absolute', width: 34, height: 34, borderColor: color,
+          [v ? 'bottom' : 'top']: 0, [h ? 'right' : 'left']: 0,
+          [v ? 'borderBottomWidth' : 'borderTopWidth']: 4, [h ? 'borderRightWidth' : 'borderLeftWidth']: 4,
+          [`border${v ? 'Bottom' : 'Top'}${h ? 'Right' : 'Left'}Radius`]: 14,
+        }} />
+      ))}
+    </>
+  );
+}
+
+// ── Lens-style search area ──
+// Where a frozen photo sits on screen: 'cover' = exactly like the camera
+// preview it was taken from, 'contain' = a gallery photo fitted whole.
+function imageFrame(shot, area) {
+  const s = (shot.fit === 'cover' ? Math.max : Math.min)(area.w / shot.width, area.h / shot.height);
+  return { s, x: (area.w - shot.width * s) / 2, y: (area.h - shot.height * s) / 2 };
+}
+const MIN_BOX = 72; // points
+const clampRect = (r, L) => {
+  const x0 = Math.max(r.x, L.x0); const y0 = Math.max(r.y, L.y0);
+  return { x: x0, y: y0, w: Math.max(MIN_BOX, Math.min(r.x + r.w, L.x1) - x0), h: Math.max(MIN_BOX, Math.min(r.y + r.h, L.y1) - y0) };
+};
+// Corner drag resizes, inside drag moves — kept within the visible photo.
+function dragRect({ corner, r }, dx, dy, L) {
+  const mv = (d, a0, a1, l0, l1) => (a1 - a0 >= l1 - l0 ? 0 : Math.min(Math.max(d, l0 - a0), l1 - a1));
+  if (!corner) return { ...r, x: r.x + mv(dx, r.x, r.x + r.w, L.x0, L.x1), y: r.y + mv(dy, r.y, r.y + r.h, L.y0, L.y1) };
+  let x0 = r.x; let y0 = r.y; let x1 = r.x + r.w; let y1 = r.y + r.h;
+  if (corner[1] === 'l') x0 = Math.min(Math.max(x0 + dx, L.x0), x1 - MIN_BOX); else x1 = Math.max(Math.min(x1 + dx, L.x1), x0 + MIN_BOX);
+  if (corner[0] === 't') y0 = Math.min(Math.max(y0 + dy, L.y0), y1 - MIN_BOX); else y1 = Math.max(Math.min(y1 + dy, L.y1), y0 + MIN_BOX);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+const DIM = 'rgba(0,0,0,0.5)';
+function LensBox({ rect: r, scanning, sweep, hintTop }) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+      <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: Math.max(0, r.y), backgroundColor: DIM }} />
+      <View style={{ position: 'absolute', left: 0, right: 0, top: r.y + r.h, bottom: 0, backgroundColor: DIM }} />
+      <View style={{ position: 'absolute', left: 0, width: Math.max(0, r.x), top: r.y, height: r.h, backgroundColor: DIM }} />
+      <View style={{ position: 'absolute', left: r.x + r.w, right: 0, top: r.y, height: r.h, backgroundColor: DIM }} />
+      <View style={{ position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: 14, overflow: 'hidden' }}>
+        {scanning ? (
+          <Animated.View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 72, transform: [{ translateY: sweep.interpolate({ inputRange: [0, 1], outputRange: [-72, r.h] }) }] }}>
+            <LinearGradient colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.32)']} style={{ flex: 1 }} />
+            <View style={{ height: 2, backgroundColor: '#FFFFFF' }} />
+          </Animated.View>
+        ) : null}
+        <Corners color="#FFFFFF" />
+      </View>
+      {!scanning ? (
+        <Text style={{ position: 'absolute', left: 0, right: 0, top: Math.max(hintTop + 4, r.y - 26), textAlign: 'center', fontSize: rf(12), fontWeight: '700', color: '#FFFFFF', textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 4 }}>
+          Drag the corners to search another area
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 // NOTE: Pressables take plain style objects only — NativeWind's cssInterop
 // drops function-form `style={({ pressed }) => ...}` on native.
 function SheetButton({ icon: Icon, label, onPress, primary }) {
@@ -76,6 +141,49 @@ export default function ScanScreen({ navigation, route }) {
   const isProduct = mode === 'product';
   const catalogRef = useRef(null);
   const M = MODES[mode];
+  const granted = !!permission?.granted;
+  const [camKey, setCamKey] = useState(0);
+  // Lens-style freeze: the photo being searched ({ uri, width, height, fit,
+  // source }) and the selected area on it, in photo pixels.
+  const [shot, setShot] = useState(null);
+  const [sel, setSel] = useState(null);
+  const [area, setArea] = useState({ w: 0, h: 0 });
+  const rootRef = useRef(null);
+  const vfRef = useRef(null);
+  const selRef = useRef(null);
+  const bounds = useRef({ top: 0, sheet: 0 }); // top bar / bottom sheet heights
+  const live = useRef({});
+  const drag = useRef(null);
+  const scanning = result?.state === 'identifying';
+  const sweep = useRef(new Animated.Value(0)).current;
+
+  // Some Android phones never fire onCameraReady: don't leave the shutter dead
+  // (a too-early tap just says "try again").
+  useEffect(() => {
+    if (!granted) return undefined;
+    const t = setTimeout(() => setCamReady(true), 1500);
+    return () => clearTimeout(t);
+  }, [granted, camKey]);
+
+  // Android drops the camera while the gallery / another app is in front; a
+  // fresh preview on return avoids a black or frozen camera.
+  useEffect(() => {
+    let prev = AppState.currentState;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (prev === 'background' && next === 'active') { setCamReady(false); setCamKey((k) => k + 1); }
+      prev = next;
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Scan sweep over the selected area while it is being identified.
+  useEffect(() => {
+    if (!scanning || !shot) return undefined;
+    sweep.setValue(0);
+    const loop = Animated.loop(Animated.timing(sweep, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [scanning, shot, sweep]);
 
   useEffect(() => {
     if (permission && !permission.granted && permission.status === 'undetermined' && permission.canAskAgain !== false) requestPermission();
@@ -86,7 +194,7 @@ export default function ScanScreen({ navigation, route }) {
   // Product mode: build the detector's catalogue index before the first photo.
   useEffect(() => { if (isProduct) warmProductDetect(); }, [isProduct]);
 
-  const reset = () => { lockRef.current = false; setResult(null); };
+  const reset = () => { lockRef.current = false; setResult(null); setShot(null); setSel(null); selRef.current = null; };
   const open = (name, params) => navigation.replace(name, params);
 
   const deviceFrom = async (m) => {
@@ -220,14 +328,54 @@ export default function ScanScreen({ navigation, route }) {
     }
   };
 
+  // Searches only the selected part of the photo: less background for the
+  // matcher, and a small model label keeps its full resolution for OCR.
+  const searchArea = async (s, box) => {
+    setResult({ state: 'identifying' });
+    const x = Math.max(0, Math.round(box.x));
+    const y = Math.max(0, Math.round(box.y));
+    const w = Math.min(s.width - x, Math.round(box.w));
+    const h = Math.min(s.height - y, Math.round(box.h));
+    let photo = { uri: s.uri, width: s.width, height: s.height };
+    if (w > 32 && h > 32 && w * h < s.width * s.height * 0.96) {
+      try {
+        const out = await ImageManipulator.manipulateAsync(s.uri, [{ crop: { originX: x, originY: y, width: w, height: h } }], { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG });
+        photo = { uri: out.uri, width: out.width, height: out.height };
+      } catch (_) { /* search the whole photo */ }
+    }
+    return identify(photo, s.source);
+  };
+
+  // Freeze a photo on screen with its starting selection, then search it.
+  const showShot = (s, box) => {
+    selRef.current = box;
+    setShot(s);
+    setSel(box);
+    return searchArea(s, box);
+  };
+
+  const measure = (ref) => new Promise((res) => (ref.current ? ref.current.measureInWindow((x, y, w, h) => res({ x, y, w, h })) : res(null)));
+
   const capture = async () => {
     if (lockRef.current || !camRef.current || !camReady) return;
     lockRef.current = true;
     setResult({ state: 'identifying' });
     try {
-      const pic = await camRef.current.takePictureAsync({ quality: 0.6 });
-      if (!pic?.uri) throw new Error('no photo');
-      await identify({ uri: pic.uri, mimeType: 'image/jpeg', width: pic.width, height: pic.height }, 'CAMERA');
+      const [root, vf] = await Promise.all([measure(rootRef), measure(vfRef)]);
+      const pic = await camRef.current.takePictureAsync({ quality: 0.8, shutterSound: false });
+      if (!pic?.uri || !pic.width || !pic.height) throw new Error('no photo');
+      const s = { uri: pic.uri, width: pic.width, height: pic.height, fit: 'cover', source: 'CAMERA' };
+      // Start with what was framed in the corners (+8% margin), in photo pixels.
+      let box = { x: 0, y: 0, w: s.width, h: s.height };
+      if (root?.w && root?.h && vf?.w) {
+        const f = imageFrame(s, root);
+        const x0 = Math.max(0, (vf.x - root.x - vf.w * 0.08 - f.x) / f.s);
+        const y0 = Math.max(0, (vf.y - root.y - vf.h * 0.08 - f.y) / f.s);
+        const x1 = Math.min(s.width, (vf.x - root.x + vf.w * 1.08 - f.x) / f.s);
+        const y1 = Math.min(s.height, (vf.y - root.y + vf.h * 1.08 - f.y) / f.s);
+        if (x1 - x0 > 32 && y1 - y0 > 32) box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      }
+      await showShot(s, box);
     } catch (_) {
       setResult({ state: 'notFound', typeOnly: true, message: "Couldn't take the photo. Please try again." });
     }
@@ -243,7 +391,11 @@ export default function ScanScreen({ navigation, route }) {
     try {
       const pick = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.8 });
       if (pick.canceled || !pick.assets?.[0]?.uri) return;
-      if (isProduct) return identify({ uri: pick.assets[0].uri, mimeType: pick.assets[0].mimeType, width: pick.assets[0].width, height: pick.assets[0].height }, 'GALLERY');
+      if (isProduct) {
+        const a = pick.assets[0];
+        if (!a.width || !a.height) return identify({ uri: a.uri, mimeType: a.mimeType }, 'GALLERY');
+        return showShot({ uri: a.uri, width: a.width, height: a.height, fit: 'contain', source: 'GALLERY' }, { x: 0, y: 0, w: a.width, h: a.height });
+      }
       lockRef.current = true;
       setResult({ state: 'resolving', raw: '' });
       const found = await scanFromURLAsync(pick.assets[0].uri, BARCODE_TYPES).catch(() => []);
@@ -255,7 +407,50 @@ export default function ScanScreen({ navigation, route }) {
   };
 
   const typeInstead = () => navigation.replace('Search', {});
-  const granted = !!permission?.granted;
+
+  // On-screen box of the selection (null while the camera is live).
+  const frame = shot && area.w ? imageFrame(shot, area) : null;
+  const rect = frame && sel ? { x: frame.x + sel.x * frame.s, y: frame.y + sel.y * frame.s, w: sel.w * frame.s, h: sel.h * frame.s } : null;
+  live.current = {
+    shot, frame, rect, area, scanning,
+    endDrag: () => {
+      const d = drag.current;
+      drag.current = null;
+      if (d?.moved && shot && selRef.current) searchArea(shot, selRef.current);
+    },
+  };
+  // Lens-style box: drag a corner to resize or the inside to move; letting go
+  // searches the new area.
+  const panRef = useRef(null);
+  if (!panRef.current) {
+    panRef.current = PanResponder.create({
+      onStartShouldSetPanResponder: () => !!live.current.rect && !live.current.scanning,
+      onMoveShouldSetPanResponder: () => !!live.current.rect && !live.current.scanning,
+      onPanResponderGrant: (e) => {
+        const { rect: R, frame: f, shot: s, area: a } = live.current;
+        const { locationX: px, locationY: py } = e.nativeEvent;
+        const near = (x, y) => Math.abs(px - x) < 36 && Math.abs(py - y) < 36;
+        const corner = near(R.x, R.y) ? 'tl' : near(R.x + R.w, R.y) ? 'tr' : near(R.x, R.y + R.h) ? 'bl' : near(R.x + R.w, R.y + R.h) ? 'br' : null;
+        const inside = px > R.x && px < R.x + R.w && py > R.y && py < R.y + R.h;
+        const L = {
+          x0: Math.max(0, f.x), x1: Math.min(a.w, f.x + s.width * f.s),
+          y0: Math.max(bounds.current.top, f.y), y1: Math.min(a.h - bounds.current.sheet, f.y + s.height * f.s),
+        };
+        drag.current = corner || inside ? { corner, r: clampRect(R, L), L, moved: false } : null;
+      },
+      onPanResponderMove: (_, g) => {
+        const d = drag.current;
+        const f = live.current.frame;
+        if (!d || !f) return;
+        if (Math.abs(g.dx) + Math.abs(g.dy) > 4) d.moved = true;
+        const n = dragRect(d, g.dx, g.dy, d.L);
+        selRef.current = { x: (n.x - f.x) / f.s, y: (n.y - f.y) / f.s, w: n.w / f.s, h: n.h / f.s };
+        setSel(selRef.current);
+      },
+      onPanResponderRelease: () => live.current.endDrag(),
+      onPanResponderTerminate: () => live.current.endDrag(),
+    });
+  }
 
   // ── result card (bottom sheet) ──
   const renderResult = () => {
@@ -445,28 +640,38 @@ export default function ScanScreen({ navigation, route }) {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#000000' }}>
+    <View ref={rootRef} collapsable={false} onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })} style={{ flex: 1, backgroundColor: '#000000' }}>
       {granted ? (
         <CameraView
+          key={camKey}
           ref={camRef}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           facing="back"
-          enableTorch={torch}
+          enableTorch={torch && !shot}
           onCameraReady={() => setCamReady(true)}
           barcodeScannerSettings={isProduct ? undefined : { barcodeTypes: BARCODE_TYPES }}
           onBarcodeScanned={isProduct || result ? undefined : onScanned}
         />
       ) : null}
 
+      {/* Frozen photo + selection box (Lens-style) */}
+      {shot && rect ? (
+        <>
+          <Image source={{ uri: shot.uri }} resizeMode={shot.fit} resizeMethod="resize" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000000' }} />
+          <LensBox rect={rect} scanning={scanning} sweep={sweep} hintTop={bounds.current.top} />
+          <View collapsable={false} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} {...panRef.current.panHandlers} />
+        </>
+      ) : null}
+
       {/* Top bar */}
-      <SafeAreaView edges={['top']}>
+      <SafeAreaView edges={['top']} onLayout={(e) => { bounds.current.top = e.nativeEvent.layout.height; }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 6 }}>
           <Pressable onPress={() => navigation.goBack()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back" className="active:opacity-70"
             style={{ height: 38, width: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}>
             <ArrowLeft size={20} color="#FFFFFF" />
           </Pressable>
           <Text style={{ flex: 1, textAlign: 'center', fontSize: rf(16), fontWeight: '800', color: '#FFFFFF' }}>{M.title}</Text>
-          {granted && Platform.OS !== 'web' ? (
+          {granted && !shot && Platform.OS !== 'web' ? (
             <Pressable onPress={() => setTorch((t) => !t)} hitSlop={8} accessibilityRole="button" accessibilityLabel={torch ? 'Torch off' : 'Torch on'} className="active:opacity-70"
               style={{ height: 38, width: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: torch ? BRAND.yellow : 'rgba(255,255,255,0.18)' }}>
               {torch ? <Zap size={18} color={BRAND.ink} /> : <ZapOff size={18} color="#FFFFFF" />}
@@ -477,18 +682,11 @@ export default function ScanScreen({ navigation, route }) {
       </SafeAreaView>
 
       {/* Viewfinder / permission */}
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
-        {granted ? (
+      <View pointerEvents={shot ? 'none' : 'box-none'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
+        {shot ? null : granted ? (
           <>
-            <View style={{ width: isProduct ? 250 : 236, height: isProduct ? 300 : mode === 'qr' ? 236 : 150 }}>
-              {[[0, 0], [0, 1], [1, 0], [1, 1]].map(([v, h]) => (
-                <View key={`${v}${h}`} style={{
-                  position: 'absolute', width: 34, height: 34, borderColor: BRAND.green,
-                  [v ? 'bottom' : 'top']: 0, [h ? 'right' : 'left']: 0,
-                  [v ? 'borderBottomWidth' : 'borderTopWidth']: 4, [h ? 'borderRightWidth' : 'borderLeftWidth']: 4,
-                  [`border${v ? 'Bottom' : 'Top'}${h ? 'Right' : 'Left'}Radius`]: 14,
-                }} />
-              ))}
+            <View ref={vfRef} collapsable={false} style={{ width: isProduct ? 250 : 236, height: isProduct ? 300 : mode === 'qr' ? 236 : 150 }}>
+              <Corners color={isProduct ? '#FFFFFF' : BRAND.green} />
             </View>
             <Text style={{ marginTop: 16, fontSize: rf(12.5), color: '#FFFFFF', textAlign: 'center', lineHeight: rf(18), textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 4 }}>{M.hint}</Text>
           </>
@@ -515,7 +713,7 @@ export default function ScanScreen({ navigation, route }) {
       </View>
 
       {/* Bottom sheet */}
-      <SafeAreaView edges={['bottom']} style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+      <SafeAreaView edges={['bottom']} onLayout={(e) => { bounds.current.sheet = e.nativeEvent.layout.height; }} style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
         <View style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 10 }}>
           {result ? (
             <>

@@ -38,7 +38,6 @@ import {
   Plus,
   Check,
   X,
-  LayoutGrid,
 } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTabBarTotalHeight, isTabletWidth } from '../../navigation/customerTabBarMetrics';
@@ -46,7 +45,7 @@ import { getTabBarTotalHeight, isTabletWidth } from '../../navigation/customerTa
 import { getSizeClass, withAlpha, Touchable } from '../../components/dashboard/theme';
 import { DashboardSection } from '../../components/dashboard/DashboardSection';
 import { DashboardSearchBar } from '../../components/dashboard/DashboardSearchBar';
-import { DashboardToolGroups } from '../../components/dashboard/DashboardToolGroups';
+import QuickAccessCards from '../../components/dashboard/QuickAccessCards';
 import { ion, mci } from '../../components/dashboard/solidIcons';
 import { EmptyState, Loader } from '../../components/rnr';
 import { getDeviceCategories, getBanners, getCategoryMenuImages, categoryMenuKey } from '../../api/masterData';
@@ -305,12 +304,13 @@ export default function HomeScreen({ navigation }) {
   const locPickedRef = useRef(false);
   const [categories, setCategories] = useState([]);
   // Per-row tile art from the admin's Category Menu (key -> image URL).
-  const [menuArt, setMenuArt] = useState({ REPAIR: {}, SELL: {}, BUY: {} });
+  // (The Buy rail shows the Repair art — see its CategoryRail below.)
+  const [menuArt, setMenuArt] = useState({ REPAIR: {}, SELL: {} });
   const [menuArtLoaded, setMenuArtLoaded] = useState(false);
   useEffect(() => {
     let alive = true;
-    Promise.all(['REPAIR', 'SELL', 'BUY'].map((t) => getCategoryMenuImages(t, { includeInactive: true })))
-      .then(([REPAIR, SELL, BUY]) => { if (alive) setMenuArt({ REPAIR, SELL, BUY }); })
+    Promise.all(['REPAIR', 'SELL'].map((t) => getCategoryMenuImages(t, { includeInactive: true })))
+      .then(([REPAIR, SELL]) => { if (alive) setMenuArt({ REPAIR, SELL }); })
       .finally(() => { if (alive) setMenuArtLoaded(true); });
     return () => { alive = false; };
   }, []);
@@ -319,8 +319,6 @@ export default function HomeScreen({ navigation }) {
   const [unread, setUnread] = useState(0);
   const [cartCount, setCartCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  // Quick Access panel's measured width — drives the tile size (Partner tool grid).
-  const [toolPanelW, setToolPanelW] = useState(0);
 
   // Nearby shops follow the location shown in the header: the picked saved
   // address when it has coordinates, otherwise the hook's (GPS / default).
@@ -383,7 +381,7 @@ export default function HomeScreen({ navigation }) {
     // What's on screen first (hero banner, Repair + Sell rails) gates the
     // launch screen; everything further down downloads in the background.
     const urls = web([imgUri(banners[0] || {}), ...Object.values(menuArt.REPAIR || {}), ...Object.values(menuArt.SELL || {})]);
-    const later = web([...banners.slice(1).map(imgUri), ...categories.map(imgUri), ...Object.values(menuArt.BUY || {})])
+    const later = web([...banners.slice(1).map(imgUri), ...categories.map(imgUri)])
       .filter((u) => !urls.includes(u));
     let doneCount = 0;
     setBootProgress(0.7, 'Loading images…');
@@ -452,30 +450,16 @@ export default function HomeScreen({ navigation }) {
   const PAD = homePad(width);
   const SECTION_GAP = sizeClass === 'tablet' ? 24 : sizeClass === 'large' ? 22 : 20;
 
-  // Quick Access as a Partner "tool group": a white rounded panel holding a
-  // wrapping grid of icon-disc tiles. All five fit one row on phones (four
-  // under 360dp); tablets use the Partner six-column grid.
-  const toolGridPad = sizeClass === 'tablet' ? 12 : 8;
-  const toolGap = sizeClass === 'tablet' ? 12 : 8;
-  const toolColumns = width >= 600 ? 6 : width < 360 ? 4 : 5;
-  const toolContentW = toolPanelW > 0 ? toolPanelW - toolGridPad * 2 - 2 : Math.max(0, contentW - PAD * 2 - toolGridPad * 2 - 2);
-  const toolCardW = Math.floor(Math.max(0, (toolContentW - toolGap * (toolColumns - 1)) / toolColumns));
-  const toolPanelStyle = {
-    marginHorizontal: PAD,
-    marginTop: 8,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingTop: 8,
-    paddingBottom: 2,
-    shadowColor: '#111111',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
+  // Quick Access in the Partner Repair / Buy / Sell card design: solid brand
+  // gradient cards (Partner tones for Repair / Buy / Sell), 3 + 2.
+  const QUICK_LOOK = {
+    Service: { sub: 'Repair orders', tone: '#035C6C' },
+    Pickup: { sub: 'Pickup orders', tone: '#D97706' },
+    Buy: { sub: 'Your purchases', tone: '#2563EB' },
+    Sell: { sub: 'Your sell orders', tone: '#4A7029' },
+    Enquiry: { sub: 'Your enquiries', tone: '#1C3053' },
   };
-  const quickTools = ORDERS_GRID.map((it) => ({ key: it.tab, label: it.label, icon: QUICK_GLYPHS[it.tab] || it.icon, iconColor: '#FFFFFF', tab: it.tab }));
+  const quickTools = ORDERS_GRID.map((it) => ({ key: it.tab, label: it.label, icon: QUICK_GLYPHS[it.tab] || it.icon, tab: it.tab, ...QUICK_LOOK[it.tab] }));
   const openQuickTool = (tool) => navigation.navigate(['Buy', 'Sell'].includes(tool.tab) ? 'MyOrders' : 'RepairOrders', { initialTab: tool.tab });
 
   // Per-service category routing — each rail drops the customer straight into
@@ -594,25 +578,11 @@ export default function HomeScreen({ navigation }) {
 
           {/* Quick Access — one tile per order type, before the category
               rails. Service / Pickup open Repair Orders; Buy / Sell open My Orders. */}
-          {/* Quick Access — Partner tool group: colour disc + title, then a
-              white rounded panel with the five order-type tiles (solid brand
-              discs, white glyphs). Service / Pickup open Repair Orders;
-              Buy / Sell open My Orders; Enquiry opens its tab. */}
+          {/* Quick Access — Partner Repair / Buy / Sell card design (colour
+              disc + title, then gradient cards). Service / Pickup open Repair
+              Orders; Buy / Sell open My Orders; Enquiry opens its tab. */}
           <View style={{ marginTop: SECTION_GAP }}>
-            <DashboardToolGroups
-              groups={[{ label: 'Quick Access', items: quickTools, icon: LayoutGrid, color: '#035C6C' }]}
-              pad={PAD}
-              panelStyle={toolPanelStyle}
-              onPanelLayout={(e) => {
-                const w = Math.round(e.nativeEvent.layout.width);
-                if (w && w !== toolPanelW) setToolPanelW(w);
-              }}
-              gridPad={toolGridPad}
-              columns={toolColumns}
-              cardWidth={toolCardW}
-              gap={toolGap}
-              onPress={openQuickTool}
-            />
+            <QuickAccessCards items={quickTools} pad={PAD} contentW={contentW} onPress={openQuickTool} />
           </View>
 
           {/* Shop by category, split by service. Each rail lists every
@@ -656,7 +626,9 @@ export default function HomeScreen({ navigation }) {
                 rail={2}
                 onPick={pickBuy}
                 onSeeAll={() => navigation.navigate('Buy')}
-                menuImages={menuArt.BUY}
+                // Same device art as the Repair cards (product decision): the
+                // admin's Buy art adds carts / bags, unlike Repair and Sell.
+                menuImages={menuArt.REPAIR}
               />
             </>
           )}

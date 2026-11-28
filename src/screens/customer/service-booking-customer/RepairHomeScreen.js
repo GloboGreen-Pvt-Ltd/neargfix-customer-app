@@ -10,7 +10,7 @@ import { getDeviceCategories, getBanners, getCategoryMenu, categoryMenuKey, getR
 import { rf } from '../../../utils/responsive';
 import RepairArt, { serviceArtKey } from '../../../components/RepairArt';
 import PageHeader, { HeaderIconButton, HEADER } from '../../../components/PageHeader';
-import { cardPastels } from '../../../theme/categoryTints';
+
 import CategoryGridCard from '../../../components/CategoryGridCard';
 
 // Brand palette (Partner app): green #035C6C, ink #111111, neutrals.
@@ -194,7 +194,7 @@ export default function RepairHomeScreen({ navigation }) {
   const tileW = Math.floor((inner - tileGap * (cols - 1)) / cols);
   const centered = { width: '100%', maxWidth: MAX_W, alignSelf: 'center' };
   // Pastel per category card (Repair colours, shared with Home).
-  const tones = cardPastels(0, cats.map((c) => c.code || c.name));
+  const tones = cats.map(() => ({ bg: '#FFFFFF', border: '#E5E7EB' }));
 
   const goToDevice = (extra = {}) =>
     navigation.navigate('RepairSelectDevice', { flow: 'REPAIR', ...extra });
