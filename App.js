@@ -15,6 +15,7 @@ import { ToastHost } from './src/components/AppToast';
 import { setBootProgress } from './src/boot/bootProgress';
 import { navigationRef } from './src/navigation/navigationRef';
 import { listenForNotificationTaps } from './src/utils/systemNotify';
+import { attachPushNavigation } from './src/lib/pushNotifications';
 
 const navTheme = {
   ...DefaultTheme,
@@ -36,6 +37,8 @@ export default function App() {
   const [fontsLoaded, fontError] = useFonts({ Inter_400Regular, Inter_800ExtraBold });
   const fontsReady = !!(fontsLoaded || fontError);
   useEffect(() => { if (fontsReady) setBootProgress(0.25, 'Getting things ready…'); }, [fontsReady]);
+  // Remote push: foreground banner + tap → booking / order screen.
+  useEffect(() => attachPushNavigation(navigationRef), []);
 
   return (
     <Provider store={store}>

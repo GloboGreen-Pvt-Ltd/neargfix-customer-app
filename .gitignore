@@ -33,3 +33,4 @@ web-build/
 .DS_Store
 .vscode/
 .idea/
+google-services.json

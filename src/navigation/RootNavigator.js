@@ -3,6 +3,7 @@ import { useDispatch } from 'react-redux';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { getSession, clearSession, setAuthExpiredHandler, isTokenExpired } from '../auth/session';
 import { logout } from '../api/auth';
+import { registerForPush, unregisterPush } from '../lib/pushNotifications';
 import { setSession, clearSession as clearAuth } from '../store/authSlice';
 import LoginScreen from '../screens/LoginScreen';
 import CreateAccountScreen from '../screens/CreateAccountScreen';
@@ -45,11 +46,18 @@ export default function RootNavigator() {
     return () => setAuthExpiredHandler(null);
   }, [dispatch]);
 
+  // Signed in (launch or login) → register this phone for the customer's pushes.
+  useEffect(() => {
+    if (session?.accessToken) registerForPush();
+  }, [session?.accessToken]);
+
   const handleLogin = (newSession) => {
     setSessionState(newSession);
     dispatch(setSession(newSession));
   };
   const handleLogout = async () => {
+    // Before logout(): removing the token needs the auth header.
+    await unregisterPush();
     try { await logout(); } catch (_) {}
     await clearSession();
     setSessionState(null);
