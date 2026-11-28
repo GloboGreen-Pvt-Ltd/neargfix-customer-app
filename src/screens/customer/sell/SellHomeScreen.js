@@ -9,7 +9,6 @@ import { listSellOrders, getSellOrderQuotations } from '../../../api/orders';
 import { OfferBanner, EmptyState, Loader } from '../../../components/rnr';
 import { getDeviceCategories, getBanners, getCategoryMenuImages, categoryMenuKey, getModelsByBrand } from '../../../api/masterData';
 import { sellOrderImage } from '../../../utils/sellImage';
-import { cardPastels } from '../../../theme/categoryTints';
 import CategoryGridCard, { homeRailCardWidthFor } from '../../../components/CategoryGridCard';
 import PageHeader, { HEADER_FONT, HeaderIconButton } from '../../../components/PageHeader';
 import { rf } from '../../../utils/responsive';
@@ -85,6 +84,7 @@ const SELL_STATS = [
 const AWAITING = new Set(['AWAITING_QUOTATION', 'PENDING', 'DRAFT']);
 const SOLD = new Set(['COMPLETED', 'SOLD']); // quote accepted / picked up are NOT sold yet
 
+// Compact tile — two per row: icon · title, count on the right.
 function StatCard({ stat, count, width, onPress }) {
   const Icon = stat.icon;
   return (
@@ -94,19 +94,14 @@ function StatCard({ stat, count, width, onPress }) {
       accessibilityLabel={`${stat.title}, ${count ?? 'loading'}`}
       className="active:opacity-85"
       style={{
-        width, height: 148, borderRadius: 18, padding: 14, justifyContent: 'space-between',
+        width, minHeight: 64, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 10, flexDirection: 'row', alignItems: 'center',
         backgroundColor: stat.bg, borderWidth: 1, borderColor: `${stat.tone}1F`,
-        shadowColor: stat.tone, shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2,
+        shadowColor: stat.tone, shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1,
       }}
     >
-      <View>
-        <Icon size={28} color={stat.tone} strokeWidth={2} />
-        <Text numberOfLines={2} style={{ marginTop: 8, fontSize: rf(15), lineHeight: rf(19), fontWeight: '800', color: NAVY }}>{stat.title}</Text>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text style={{ flex: 1, fontSize: rf(28), fontWeight: '800', color: stat.countTone || NAVY }}>{count ?? '–'}</Text>
-        <ChevronRight size={20} color={NAVY} strokeWidth={2.4} />
-      </View>
+      <Icon size={20} color={stat.tone} strokeWidth={2.2} />
+      <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} style={{ flex: 1, marginLeft: 8, fontSize: rf(12.5), lineHeight: rf(16), fontWeight: '700', color: NAVY }}>{stat.title}</Text>
+      <Text numberOfLines={1} style={{ marginLeft: 6, fontSize: rf(20), fontWeight: '800', color: stat.countTone || NAVY }}>{count ?? '–'}</Text>
     </Pressable>
   );
 }
@@ -174,12 +169,15 @@ export default function SellHomeScreen({ navigation }) {
         setCats(sortCategories((list || []).filter((c) => c.isActive !== false)));
         setMenuImages(imgs || {});
         // Hero: the admin "Sell" banner(s) first, then the general "Slider"
-        // banners (same set the Partner app's Sell carousel shows).
+        // banners (same set the Partner app's Sell carousel shows). With
+        // neither published, the master-data banners Home shows — never the
+        // built-in offer card while the admin has banners.
         const active = (rows || []).filter((b) => b.isActive !== false);
         const bySort = (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
         const title = (b) => String(b.title || '').trim().toLowerCase();
+        const sellSet = [...active.filter((b) => title(b) === 'sell').sort(bySort), ...active.filter((b) => title(b).startsWith('slider')).sort(bySort)];
         setBanners(
-          [...active.filter((b) => title(b) === 'sell').sort(bySort), ...active.filter((b) => title(b).startsWith('slider')).sort(bySort)]
+          (sellSet.length ? sellSet : [...active].sort(bySort))
             .map((b) => ({ key: String(b.id), uri: imgUri(b) }))
             .filter((b) => b.uri),
         );
@@ -240,7 +238,7 @@ export default function SellHomeScreen({ navigation }) {
   const catGap = width < 360 ? 8 : 10;
   const panelPad = width < 360 ? 8 : 10;
   const catSize = Math.floor((contentW - padH * 2 - panelPad * 2 - 2 - catGap * (catCols - 1)) / catCols);
-  const catTones = cardPastels(1, cats.map((c) => c.code || c.name));
+  const catTones = cats.map(() => ({ bg: '#FFFFFF', border: '#E5E7EB' }));
   // Card names use the Home category cards' typography on this screen size.
   const homeCardW = homeRailCardWidthFor(width);
   // Action cards: one per screen with the next peeking in.
@@ -267,7 +265,7 @@ export default function SellHomeScreen({ navigation }) {
     navigation.navigate('SellSelectDevice', { flow: 'SELL', ...extra });
 
   // Seller overview cards: 2 per row; counts refresh whenever the tab is shown.
-  const statGap = 12;
+  const statGap = 10;
   const statW = Math.floor((contentW - padH * 2 - statGap) / 2);
   const openStat = (key) => {
     if (key === 'enquiries') navigation.navigate('SellBuyerEnquiries');
@@ -417,7 +415,7 @@ export default function SellHomeScreen({ navigation }) {
               })}
             </View>
 
-            {/* Seller overview — 2×2 cards with live counts */}
+            {/* Seller overview — compact 2×2 cards with live counts */}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: statGap, paddingHorizontal: padH, marginTop: 16 }}>
               {SELL_STATS.map((s) => (
                 <StatCard key={s.key} stat={s} count={stats ? stats[s.key] : null} width={statW} onPress={() => openStat(s.key)} />

@@ -2,21 +2,20 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-  Search, ShoppingCart, History, Bell, ChevronRight, X, Plus, SlidersHorizontal,
-  LayoutGrid, Tag, BadgeCheck, TrendingUp, Smartphone, ClipboardList, Store, ArrowRight, User, MapPin, Package,
-  CheckCircle2, Cpu, Star, Zap,
-  Percent,
-  Truck,
+  Search, ShoppingCart, History, ChevronRight, X, Plus, SlidersHorizontal,
+  Tag, BadgeCheck, TrendingUp, Smartphone, ClipboardList, Store, ArrowRight, User, MapPin, Package,
+  CheckCircle2, Cpu, Percent, Star, Zap, Truck,
 } from 'lucide-react-native';
 import { EmptyState, Loader } from '../../../components/rnr';
 import { notify } from '../../../components/confirm';
 import { getDeviceCategories, getBanners, getCategoryMenuImages, categoryMenuKey } from '../../../api/masterData';
 import { listProducts, getCart, addToCart } from '../../../api/marketplace';
-import { getUnreadCount } from '../../../api/notifications';
+import PageHeader, { HeaderIconButton } from '../../../components/PageHeader';
 import { resolveDeviceImageSource } from '../../../utils/images';
+import CategoryGridCard, { homeRailCardWidth } from '../../../components/CategoryGridCard';
+
 import { rf } from '../../../utils/responsive';
 import BuyNearbyShops from '../../../components/BuyNearbyShops';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Partner app Buy palette — green #035C6C, ink #111111, neutrals #F3F4F6 / #F3F4F6.
 const GREEN = '#035C6C';
@@ -28,7 +27,6 @@ const HINT = '#8E97A9';
 const FIELD = '#F3F4F6';
 const LINE = '#E8EAEE';
 const PAGE_BG = '#FFFFFF';
-const RED = '#F32C26';
 const YELLOW = '#FFD60A';
 
 const MAX_W = 720;
@@ -94,21 +92,6 @@ function SectionHead({ icon, title, onViewAll }) {
         </Pressable>
       ) : null}
     </View>
-  );
-}
-
-// Header icon with an optional red dot (unread) or count badge (cart).
-function HeaderBadgeIcon({ Icon, label, dot, count, onPress }) {
-  return (
-    <Pressable onPress={onPress} hitSlop={6} accessibilityRole="button" accessibilityLabel={label} style={{ height: 40, width: 38, alignItems: 'center', justifyContent: 'center' }}>
-      <Icon size={24} color={INK} strokeWidth={2} />
-      {dot ? <View style={{ position: 'absolute', top: 7, right: 7, height: 9, width: 9, borderRadius: 5, backgroundColor: RED, borderWidth: 1.5, borderColor: '#FFFFFF' }} /> : null}
-      {count ? (
-        <View style={{ position: 'absolute', top: 2, right: 0, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: RED, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 }}>
-          <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{count > 99 ? '99+' : count}</Text>
-        </View>
-      ) : null}
-    </Pressable>
   );
 }
 
@@ -193,7 +176,6 @@ export default function BuyHomeScreen({ navigation }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cartCount, setCartCount] = useState(0);
-  const [unread, setUnread] = useState(0);
   const [adding, setAdding] = useState(null);
   const [slide, setSlide] = useState(0);
   // Banner width/height, read from the first banner image (2:1 until known).
@@ -203,7 +185,6 @@ export default function BuyHomeScreen({ navigation }) {
   const [sortBy, setSortBy] = useState('default');
   const [maxPrice, setMaxPrice] = useState(null);
   const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const bannerRef = useRef(null);
 
   useEffect(() => {
@@ -213,7 +194,9 @@ export default function BuyHomeScreen({ navigation }) {
           getDeviceCategories(),
           getBanners().catch(() => []),
           listProducts({ status: 'ACTIVE' }).catch(() => []),
-          getCategoryMenuImages('BUY', { includeInactive: true }),
+          // Same device art as the Home cards (the Repair menu images), not the
+          // Buy menu's cart / bag art.
+          getCategoryMenuImages('REPAIR', { includeInactive: true }),
         ]);
         setCats(sortCategories((list || []).filter((c) => c.isActive !== false)));
         setMenuImages(imgs || {});
@@ -236,14 +219,10 @@ export default function BuyHomeScreen({ navigation }) {
     Image.getSize(first, (w, h) => { if (w > 0 && h > 0) setBannerRatio(w / h); }, () => {});
   }, [buyBanners]);
 
-  // Header counters refresh whenever the tab regains focus.
+  // Header cart count refreshes whenever the tab regains focus.
   const refreshHeader = useCallback(async () => {
-    const [cart, count] = await Promise.all([
-      getCart().catch(() => null),
-      getUnreadCount().catch(() => null),
-    ]);
+    const cart = await getCart().catch(() => null);
     if (cart) setCartCount(cart.reduce((n, it) => n + (it.quantity || 1), 0));
-    if (count != null) setUnread(Number(count) || 0);
   }, []);
   useFocusEffect(useCallback(() => { refreshHeader(); }, [refreshHeader]));
 
@@ -286,7 +265,8 @@ export default function BuyHomeScreen({ navigation }) {
   const bannerH = Math.round(bannerW / bannerRatio);
   // Two deal cards per screen with the next one peeking in (reference layout).
   const dealW = Math.max(160, Math.round((contentW - PAD - 10) / 2.1));
-  const tileW = Math.round((contentW - PAD * 2 - 8 * 4) / 4.6);
+  // Category strip: the Home card, sized so the 5th card peeks in (it scrolls).
+  const catW = Math.min(homeRailCardWidth(contentW, PAD), Math.floor((contentW - PAD - 8 * 4) / 4.35));
   // Fallback hero photo: the first live listing that has one.
   const heroImage = products.map(imageOf).find(Boolean) || null;
   const centered = { width: '100%', maxWidth: MAX_W, alignSelf: 'center' };
@@ -313,16 +293,20 @@ export default function BuyHomeScreen({ navigation }) {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: PAGE_BG, paddingTop: insets.top }}>
-      {/* ---------- Header: brand · bell · history · cart ---------- */}
-      <View style={[centered, { flexDirection: 'row', alignItems: 'center', paddingHorizontal: PAD, paddingTop: 8, paddingBottom: 6 }]}>
-        <Image source={require('../../../../assets/logo.png')} style={{ width: 42, height: 42 }} resizeMode="contain" />
-        <View style={{ flex: 1, marginLeft: 8 }}>
-          <Text style={{ fontSize: rf(20), fontWeight: '800', color: GREEN }}>Buy</Text>
-        </View>
-        <HeaderBadgeIcon Icon={Package} label="My Orders" onPress={() => navigation.navigate('MyOrders', { initialTab: 'Buy' })} />
-        <HeaderBadgeIcon Icon={ShoppingCart} label="My Cart" count={cartCount} onPress={() => navigation.navigate('MyCart')} />
-      </View>
+    <View style={{ flex: 1, backgroundColor: PAGE_BG }}>
+      {/* ---------- Header: same PageHeader as the Repair / Sell tabs ---------- */}
+      <PageHeader
+        title="Buy on NearGFix"
+        subtitle="New & used devices from verified shops."
+        onBack={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
+        sideWidth={80}
+        right={(
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <HeaderIconButton icon={History} label="Buy History" onPress={() => navigation.navigate('MyOrders', { initialTab: 'Buy' })} />
+            <HeaderIconButton icon={ShoppingCart} label="My Cart" badge={cartCount} onPress={() => navigation.navigate('MyCart')} />
+          </View>
+        )}
+      />
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 120 }}>
         <View style={centered}>
@@ -398,20 +382,11 @@ export default function BuyHomeScreen({ navigation }) {
             <View style={{ paddingVertical: 16 }}><Loader label="Loading categories..." /></View>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }} contentContainerStyle={{ gap: 8, paddingHorizontal: PAD, paddingBottom: 4 }}>
-              {[...cats.map((c) => ({ key: c.id, name: c.name, uri: menuImages[categoryMenuKey(c.name)] || menuImages[categoryMenuKey(c.code)] || imageOf(c), onPress: () => openCategory(c) })),
-                { key: 'spare', name: 'Spares', uri: menuImages[categoryMenuKey('Spare Parts')] || null, onPress: () => navigation.navigate('BuyListing', { q: 'spare', title: 'Spare Parts' }) },
-                { key: 'more', name: 'More', uri: null, onPress: () => navigation.navigate('BuyDevices') },
+              {[...cats.map((c) => ({ key: c.id, name: c.name, uri: menuImages[categoryMenuKey(c.name)] || menuImages[categoryMenuKey(c.code)] || imageOf(c), Icon: Smartphone, onPress: () => openCategory(c) })),
+                { key: 'spare', name: 'Spares', uri: menuImages[categoryMenuKey('Spare Parts')] || null, Icon: Cpu, onPress: () => navigation.navigate('BuyListing', { q: 'spare', title: 'Spare Parts' }) },
               ].map((t) => (
-                <Pressable key={t.key} onPress={t.onPress} accessibilityRole="button" accessibilityLabel={t.name}
-                  style={{ width: tileW, height: tileW * 0.95, borderRadius: 14, borderWidth: 1, borderColor: LINE, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, ...cardShadow }}>
-                  {t.uri ? <Image source={{ uri: t.uri }} style={{ width: tileW * 0.6, height: tileW * 0.48 }} resizeMode="contain" />
-                    : (
-                      <View style={{ height: tileW * 0.48, width: tileW * 0.48, borderRadius: tileW, backgroundColor: GREEN_LIGHT, alignItems: 'center', justifyContent: 'center' }}>
-                        {t.key === 'more' ? <LayoutGrid size={20} color={GREEN} /> : t.key === 'spare' ? <Cpu size={20} color={GREEN} /> : <Smartphone size={20} color={GREEN} />}
-                      </View>
-                    )}
-                  <Text numberOfLines={1} style={{ marginTop: 6, fontSize: rf(11), fontWeight: '700', color: INK }}>{t.name}</Text>
-                </Pressable>
+                <CategoryGridCard key={t.key} uniform name={t.name} uri={t.uri} Icon={t.Icon} iconColor={GREEN} width={catW}
+                  tone={{ bg: '#FFFFFF', border: '#E5E7EB' }} onPress={t.onPress} />
               ))}
             </ScrollView>
           )}

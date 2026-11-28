@@ -7,9 +7,29 @@ import { loadCatalog } from '../../utils/searchCatalog';
 
 const list = (v) => (Array.isArray(v) ? v : v ? [v] : []);
 
+// The dev fallback (this PC on :8199) is often not running, and a firewall
+// that drops the connection would hold every scan for the detector's 15 s
+// cap. Probe it once (1.5 s); if it's down, skip it and re-check in a minute.
+let reachable = null;
+function visualReachable() {
+  if (process.env.EXPO_PUBLIC_VISUAL_SEARCH_BASE) return Promise.resolve(true);
+  if (!reachable) {
+    reachable = new Promise((resolve) => {
+      const ctl = new AbortController();
+      const t = setTimeout(() => { ctl.abort(); resolve(false); }, 1500);
+      fetch(VISUAL_SEARCH_BASE, { signal: ctl.signal })
+        .then(() => resolve(true), () => resolve(false))
+        .finally(() => clearTimeout(t));
+    });
+    reachable.then((ok) => { if (!ok) setTimeout(() => { reachable = null; }, 60000); });
+  }
+  return reachable;
+}
+
 // Named function, not an async arrow inside a ternary: that shape breaks
 // Metro's Hermes transform ("Property id of VariableDeclarator …").
 async function visual(photo, { ocrText } = {}) {
+  if (!(await visualReachable())) throw new Error('visual search not reachable');
   // Wide net (20): the detector then keeps the recognised brand / device type.
   const r = await visualSearchDevice(photo, { limit: 20, ocrText });
   return { ok: true, confidence: r.confidence, matches: [r.bestMatch, ...(r.matches || [])].filter(Boolean), ocrText: r.ocrText || '' };
