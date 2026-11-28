@@ -1,3 +1,13 @@
+import fs from 'fs';
+import path from 'path';
+
+// Firebase config for remote push (native FCM token on Android). Without it the
+// build cannot get a push token at all, so the server's customer pushes go nowhere.
+// EAS: secret file env var GOOGLE_SERVICES_JSON (the JSON is not in git);
+// local builds fall back to the untracked ./google-services.json.
+const googleServicesFile = process.env.GOOGLE_SERVICES_JSON
+  || (fs.existsSync(path.join(__dirname, 'google-services.json')) ? './google-services.json' : null);
+
 // Use your computer's IP when running on a physical device so the app can reach your backend.
 // Run: set EXPO_PUBLIC_API_HOST=192.168.1.5  (then npx expo start)
 // Or create .env with EXPO_PUBLIC_API_HOST=192.168.1.5
@@ -46,7 +56,9 @@ export default {
       // Google Maps (Android) key from env / EAS secret — never committed.
       config: { googleMaps: { apiKey: process.env.GOOGLE_MAPS_ANDROID_API_KEY } },
       adaptiveIcon: { foregroundImage: './assets/logo.png', backgroundColor: '#202124' },
-      permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION'],
+      ...(googleServicesFile ? { googleServicesFile } : {}),
+      // POST_NOTIFICATIONS: Android 13+ runtime permission for push banners.
+      permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION', 'POST_NOTIFICATIONS'],
     },
     plugins: [
       ['expo-local-authentication', { faceIDPermission: 'Use Face ID to unlock NearGFix.' }],
@@ -75,6 +87,9 @@ export default {
             'We use your location to show pickup-enabled repair shops nearby.',
         },
       ],
+      // Remote pushes without a channelId land on 'default', the HIGH-importance
+      // channel lib/pushNotifications.js creates and the server targets.
+      ['expo-notifications', { color: '#035C6C', defaultChannel: 'default' }],
       'expo-font',
       'expo-asset',
       'expo-sharing',
